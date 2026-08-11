@@ -1,0 +1,27 @@
+name: PR Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  go-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The end-to-end tests skip themselves when Trivy is missing, so without
+      # this step they would pass without ever scanning anything. The fixture
+      # scans use only the offline scanners, so no database download is needed.
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Run Go tests
+        run: go test ./...

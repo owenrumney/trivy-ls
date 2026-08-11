@@ -1,0 +1,47 @@
+version: 2
+
+project_name: trivy-ls
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/trivy-ls
+    binary: trivy-ls
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/owenrumney/trivy-ls/internal/handler.Version={{ .Version }}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+release:
+  extra_files:
+    - glob: vscode-trivy-ls/*.vsix

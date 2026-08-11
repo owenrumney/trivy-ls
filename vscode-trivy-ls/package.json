@@ -1,0 +1,162 @@
+{
+  "name": "trivy-ls",
+  "displayName": "Trivy Language Server",
+  "description": "Trivy misconfiguration, secret and vulnerability findings as inline diagnostics, with hover details and ignore quick fixes.",
+  "version": "0.1.0",
+  "publisher": "owenrumney",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/owenrumney/trivy-ls"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "trivy",
+    "security",
+    "terraform",
+    "dockerfile",
+    "iac"
+  ],
+  "activationEvents": [
+    "onLanguage:terraform",
+    "onLanguage:dockerfile",
+    "onLanguage:yaml",
+    "onLanguage:json",
+    "workspaceContains:**/*.tf",
+    "workspaceContains:**/Dockerfile",
+    "workspaceContains:**/docker-compose.yml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "trivy-ls.scan",
+        "title": "Scan Workspace",
+        "category": "Trivy LS"
+      },
+      {
+        "command": "trivy-ls.restart",
+        "title": "Restart Language Server",
+        "category": "Trivy LS"
+      }
+    ],
+    "configuration": {
+      "title": "Trivy Language Server",
+      "properties": {
+        "trivy-ls.serverPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Absolute path to the `trivy-ls` server binary. When empty, the extension uses the bundled binary. Changing this requires a restart of the language server.",
+          "order": 0
+        },
+        "trivy-ls.trivyPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `trivy` binary. When empty, `trivy` is looked up on `PATH`.",
+          "order": 1
+        },
+        "trivy-ls.scanners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "misconfig",
+              "secret",
+              "vuln",
+              "license"
+            ]
+          },
+          "default": [
+            "misconfig",
+            "secret",
+            "vuln"
+          ],
+          "markdownDescription": "Scanners to enable, passed to `--scanners`. Dropping `vuln` avoids the vulnerability database download; `misconfig` and `secret` are entirely offline.",
+          "order": 2
+        },
+        "trivy-ls.severities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "CRITICAL",
+              "HIGH",
+              "MEDIUM",
+              "LOW",
+              "UNKNOWN"
+            ]
+          },
+          "default": [],
+          "markdownDescription": "Severities to report, passed to `--severity`. Empty reports all severities.",
+          "order": 3
+        },
+        "trivy-ls.ignoreFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Ignore file passed to `--ignorefile`. Empty uses Trivy's default of `.trivyignore`.",
+          "order": 4
+        },
+        "trivy-ls.configFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Trivy config file passed to `--config`.",
+          "order": 5
+        },
+        "trivy-ls.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Extra arguments appended to the Trivy command line verbatim, e.g. `--offline-scan`.",
+          "order": 6
+        },
+        "trivy-ls.scanOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Rescan the workspace when a file is saved.",
+          "order": 7
+        },
+        "trivy-ls.scanOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Scan the workspace once when the server starts.",
+          "order": 8
+        },
+        "trivy-ls.fullRange": {
+          "type": "boolean",
+          "default": false,
+          "description": "Underline the whole span a finding covers rather than just its first line. Off by default because IaC findings routinely span an entire resource block.",
+          "order": 9
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "npm run compile -- --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck && npm run compile",
+    "format:check": "npx prettier@3.6.2 --check \"src/**/*.ts\" \"scripts/**/*.js\" \"*.json\"",
+    "package": "npm run compile && node scripts/package.js",
+    "vscode:prepublish": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.28.1",
+    "ovsx": "^0.10.10",
+    "typescript": "^5.0.0"
+  }
+}

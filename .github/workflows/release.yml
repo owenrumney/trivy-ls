@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build and publish VS Code extensions
+        env:
+          VSCODE_PUBLISH_TOKEN: ${{ secrets.VSCODE_PUBLISH_TOKEN }}
+          OPVSX_PUBLISH_TOKEN: ${{ secrets.OPVSX_PUBLISH_TOKEN }}
+        run: |
+          cd vscode-trivy-ls
+          npm ci
+          node scripts/package.js
+
+      # package.js rewrites the version to match the tag; goreleaser refuses to
+      # run against a dirty tree.
+      - name: Restore git state after vsix build
+        run: git checkout -- vscode-trivy-ls/package.json
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

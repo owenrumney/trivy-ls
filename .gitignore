@@ -1,0 +1,11 @@
+bin/
+dist/
+coverage.out
+.claude/
+
+# VS Code extension
+vscode-trivy-ls/node_modules/
+vscode-trivy-ls/out/
+vscode-trivy-ls/bin/
+vscode-trivy-ls/*.vsix
+vscode-trivy-ls/README.md

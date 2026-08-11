@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Trivy Language Server">
+  <!-- Built from filled shapes only: ImageMagick's fallback SVG renderer drops
+       stroke-only geometry, and the icon PNG is generated with it. -->
+  <rect x="0" y="0" width="128" height="128" rx="27" ry="27" fill="#151d29"/>
+  <path d="M64 17 L105 32 L105 64 C105 88.5 87 105 64 113 C41 105 23 88.5 23 64 L23 32 Z" fill="#2ec4b6"/>
+  <path d="M64.8 71.2 L71.2 64.8 L91.2 84.8 L84.8 91.2 Z" fill="#101822"/>
+  <circle cx="56" cy="56" r="20" fill="#101822"/>
+  <circle cx="56" cy="56" r="12.5" fill="#2ec4b6"/>
+</svg>
