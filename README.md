@@ -4,6 +4,9 @@ A [Language Server Protocol](https://microsoft.github.io/language-server-protoco
 
 Built on [go-lsp](https://github.com/owenrumney/go-lsp).
 
+![Trivy LS - Neovim](.github/images/trivy-ls.png)
+
+
 ## Contents
 
 - [What it does](#what-it-does)
