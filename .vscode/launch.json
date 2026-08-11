@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-trivy-ls"
+      ],
+      "outFiles": ["${workspaceFolder}/vscode-trivy-ls/out/**/*.js"],
+      "preLaunchTask": "extension-dev"
+    }
+  ]
+}

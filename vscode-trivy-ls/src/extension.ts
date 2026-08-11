@@ -4,22 +4,12 @@ import * as path from "path";
 import { ExtensionContext, commands, window, workspace } from "vscode";
 import {
   DidChangeConfigurationNotification,
-  ExecuteCommandRequest,
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
 
 const SECTION = "trivy-ls";
-
-// Commands the server puts on its code actions. VS Code resolves those against
-// its global command registry, so each one needs a proxy here that hands the
-// request back to the server.
-const SERVER_COMMANDS = [
-  "trivy-ls.scan",
-  "trivy-ls.openUrl",
-  "trivy-ls.addToIgnoreFile",
-];
 
 let client: LanguageClient | undefined;
 
@@ -48,14 +38,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
     clientOptions,
   );
 
-  for (const command of SERVER_COMMANDS) {
-    context.subscriptions.push(
-      commands.registerCommand(command, (...args: unknown[]) =>
-        executeOnServer(command, args),
-      ),
-    );
-  }
-
+  // The commands the server advertises in executeCommandProvider are
+  // registered by the language client itself, so only client-side ones belong
+  // here.
   context.subscriptions.push(
     commands.registerCommand("trivy-ls.restart", () => client?.restart()),
     workspace.onDidChangeConfiguration(onConfigurationChanged),
@@ -66,23 +51,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
 export function deactivate(): Thenable<void> | undefined {
   return client?.stop();
-}
-
-async function executeOnServer(
-  command: string,
-  args: unknown[],
-): Promise<void> {
-  if (!client) {
-    return;
-  }
-  try {
-    await client.sendRequest(ExecuteCommandRequest.type, {
-      command,
-      arguments: args,
-    });
-  } catch (err) {
-    window.showErrorMessage(`Trivy: ${command} failed: ${errorMessage(err)}`);
-  }
 }
 
 async function onConfigurationChanged(event: {
@@ -155,8 +123,4 @@ function resolveServerPath(context: ExtensionContext): string | undefined {
       "Install trivy-ls and set the trivy-ls.serverPath setting.",
   );
   return undefined;
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

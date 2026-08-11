@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install extension extension-target extension-install
+.PHONY: build test lint clean install extension extension-dev extension-target extension-install
 
 BINARY  := trivy-ls
 EXT_DIR := vscode-trivy-ls
@@ -20,6 +20,12 @@ lint:
 clean:
 	rm -rf bin/
 	rm -rf $(EXT_DIR)/bin/ $(EXT_DIR)/out/ $(EXT_DIR)/*.vsix
+
+# Build the server and extension in place for F5 debugging.
+extension-dev: build
+	cd $(EXT_DIR) && npm install && npm run compile
+	mkdir -p $(EXT_DIR)/bin
+	cp bin/$(BINARY) $(EXT_DIR)/bin/$(BINARY)
 
 # Build all platform .vsix files.
 extension: test
