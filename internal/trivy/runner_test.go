@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -135,6 +136,37 @@ func TestScanReportsMissingBinary(t *testing.T) {
 	var notInstalled *ErrNotInstalled
 	if !errors.As(err, &notInstalled) {
 		t.Fatalf("got %T, want *ErrNotInstalled so the server can prompt the user", err)
+	}
+}
+
+func TestAvailableReportsMissingBinary(t *testing.T) {
+	if err := (&Runner{Binary: "trivy-does-not-exist-xyz"}).Available(); err == nil {
+		t.Fatal("expected an error for a missing binary")
+	} else {
+		var notInstalled *ErrNotInstalled
+		if !errors.As(err, &notInstalled) {
+			t.Fatalf("got %T, want *ErrNotInstalled", err)
+		}
+	}
+}
+
+// Trivy prints usage errors to stdout, so an unparseable report plus a non-zero
+// exit has to be reported as the failure it was. Reporting the JSON parse error
+// instead buries the only useful detail.
+func TestScanReportsTrivyFailureRatherThanParseError(t *testing.T) {
+	requireTrivy(t)
+
+	r := &Runner{Scanners: []string{"misconfig"}, ExtraArgs: []string{"--bogus-flag-xyz"}}
+
+	_, err := r.Scan(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("expected an error for an unknown flag")
+	}
+	if !strings.Contains(err.Error(), "bogus-flag-xyz") {
+		t.Errorf("error should name the offending flag, got %q", err)
+	}
+	if strings.Contains(err.Error(), "parsing trivy report") {
+		t.Errorf("error should explain the failure, not the parse that followed it: %q", err)
 	}
 }
 

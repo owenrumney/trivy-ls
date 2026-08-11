@@ -43,34 +43,20 @@ func (r *Runner) binary() string {
 	return "trivy"
 }
 
-// Version returns the version string reported by the binary. It doubles as an
-// availability check at startup.
-func (r *Runner) Version(ctx context.Context) (string, error) {
+// Available reports whether the Trivy binary can be found, so the server can
+// tell the user at startup rather than after the first scan quietly fails.
+func (r *Runner) Available() error {
 	if _, err := exec.LookPath(r.binary()); err != nil {
-		return "", &ErrNotInstalled{Binary: r.binary()}
+		return &ErrNotInstalled{Binary: r.binary()}
 	}
-
-	var stdout bytes.Buffer
-	cmd := exec.CommandContext(ctx, r.binary(), "--version", "--format", "json")
-	cmd.Stdout = &stdout
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("trivy --version: %w", err)
-	}
-
-	var v struct {
-		Version string `json:"Version"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil || v.Version == "" {
-		return strings.TrimSpace(stdout.String()), nil
-	}
-	return v.Version, nil
+	return nil
 }
 
 // Scan runs a filesystem scan rooted at dir and returns findings keyed by
 // absolute file path.
 func (r *Runner) Scan(ctx context.Context, dir string) (Findings, error) {
-	if _, err := exec.LookPath(r.binary()); err != nil {
-		return nil, &ErrNotInstalled{Binary: r.binary()}
+	if err := r.Available(); err != nil {
+		return nil, err
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -79,21 +65,32 @@ func (r *Runner) Scan(ctx context.Context, dir string) (Findings, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		// Trivy exits non-zero for genuine failures, but also when --exit-code
-		// is configured and findings exist. Trust the output: if we can parse a
-		// report, the scan worked.
-		if stdout.Len() == 0 {
-			return nil, fmt.Errorf("trivy scan failed: %w: %s", err, truncate(stderr.String(), 500))
-		}
-	}
+	// Trivy exits non-zero for genuine failures, but also when --exit-code is
+	// configured and findings exist, so the exit status alone cannot decide
+	// whether the scan worked. The report is the authority.
+	runErr := cmd.Run()
 
 	var report Report
 	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		// Unparseable output plus a non-zero exit means the scan really did
+		// fail, and the reason is far more useful than the parse error. Trivy
+		// prints usage errors to stdout, so the explanation may be in either
+		// stream.
+		if runErr != nil {
+			return nil, fmt.Errorf("trivy scan failed: %w: %s", runErr, truncate(explain(stderr, stdout), 500))
+		}
 		return nil, fmt.Errorf("parsing trivy report: %w", err)
 	}
 
 	return report.Flatten(targetResolver(dir)), nil
+}
+
+// explain picks whichever stream carries the diagnosis.
+func explain(stderr, stdout bytes.Buffer) string {
+	if s := strings.TrimSpace(stderr.String()); s != "" {
+		return s
+	}
+	return stdout.String()
 }
 
 func (r *Runner) args() []string {

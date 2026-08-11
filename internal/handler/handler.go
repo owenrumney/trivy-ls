@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/owenrumney/go-lsp/document"
 	"github.com/owenrumney/go-lsp/lsp"
@@ -49,10 +50,15 @@ type Handler struct {
 	root      string
 	findings  trivy.Findings
 	published map[lsp.DocumentURI]struct{}
+	// warned is the last error already shown to the user, so a persistent
+	// failure does not raise a dialog on every save.
+	warned string
 
-	scanReq   chan struct{}
+	scanReq chan struct{}
+	// userScan records that a queued scan was asked for by the user, who is
+	// waiting for an answer and must not be met with silence.
+	userScan  atomic.Bool
 	scanOnce  sync.Once
-	warnOnce  sync.Once
 	scanState sync.Mutex
 }
 
@@ -85,7 +91,7 @@ func New() *Handler {
 func (h *Handler) SetClient(client *server.Client) { h.client = client }
 
 // Initialize records the workspace root and client configuration.
-func (h *Handler) Initialize(_ context.Context, params *lsp.InitializeParams) (*lsp.InitializeResult, error) {
+func (h *Handler) Initialize(ctx context.Context, params *lsp.InitializeParams) (*lsp.InitializeResult, error) {
 	cfg := parseConfig(params.InitializationOptions)
 	root := rootFrom(params)
 
@@ -94,8 +100,15 @@ func (h *Handler) Initialize(_ context.Context, params *lsp.InitializeParams) (*
 	h.root = root
 	h.mu.Unlock()
 
-	if root != "" && cfg.scanOnOpen() {
-		h.trigger()
+	scanning := root != "" && cfg.scanOnOpen()
+
+	if scanning {
+		h.trigger(false)
+	} else if err := cfg.runner().Available(); err != nil {
+		// A scan reports a missing binary itself. Without one there is nothing
+		// to report it, and the server would sit silent until the user asked
+		// for a scan and wondered why nothing happened.
+		h.reportScanError(ctx, err, false)
 	}
 
 	return &lsp.InitializeResult{
@@ -151,7 +164,7 @@ func (h *Handler) DidSave(_ context.Context, _ *lsp.DidSaveTextDocumentParams) e
 	h.mu.RUnlock()
 
 	if scan {
-		h.trigger()
+		h.trigger(false)
 	}
 	return nil
 }
@@ -173,7 +186,7 @@ func (h *Handler) DidChangeConfiguration(_ context.Context, params *lsp.DidChang
 	h.cfg = cfg
 	h.mu.Unlock()
 
-	h.trigger()
+	h.trigger(false)
 	return nil
 }
 
@@ -183,7 +196,7 @@ func (h *Handler) DidChangeConfiguration(_ context.Context, params *lsp.DidChang
 func (h *Handler) ExecuteCommand(ctx context.Context, params *lsp.ExecuteCommandParams) (any, error) {
 	switch params.Command {
 	case CommandScan:
-		h.trigger()
+		h.trigger(true)
 		return nil, nil
 
 	case CommandOpenURL:
@@ -212,7 +225,7 @@ func (h *Handler) ExecuteCommand(ctx context.Context, params *lsp.ExecuteCommand
 		if err := h.addToIgnoreFile(id); err != nil {
 			return nil, err
 		}
-		h.trigger()
+		h.trigger(true)
 		return nil, nil
 
 	default:
@@ -222,9 +235,15 @@ func (h *Handler) ExecuteCommand(ctx context.Context, params *lsp.ExecuteCommand
 
 // --- scanning -----------------------------------------------------------
 
-// trigger requests a scan, coalescing with any request already queued.
-func (h *Handler) trigger() {
+// trigger requests a scan, coalescing with any request already queued. A scan
+// the user asked for keeps that status even when it merges into a queued one,
+// since somebody is still waiting on the result.
+func (h *Handler) trigger(interactive bool) {
 	h.scanOnce.Do(func() { go h.scanLoop() })
+
+	if interactive {
+		h.userScan.Store(true)
+	}
 
 	select {
 	case h.scanReq <- struct{}{}:
@@ -247,6 +266,8 @@ func (h *Handler) scan(ctx context.Context) {
 	cfg, root := h.cfg, h.root
 	h.mu.RUnlock()
 
+	interactive := h.userScan.Swap(false)
+
 	if root == "" {
 		return
 	}
@@ -256,7 +277,7 @@ func (h *Handler) scan(ctx context.Context) {
 
 	findings, err := cfg.runner().Scan(ctx, root)
 	if err != nil {
-		h.reportScanError(ctx, err)
+		h.reportScanError(ctx, err, interactive)
 		return
 	}
 
@@ -269,22 +290,25 @@ func (h *Handler) scan(ctx context.Context) {
 func (h *Handler) publish(ctx context.Context, findings trivy.Findings, fullRange bool) {
 	idx := newLineIndex()
 	current := make(map[lsp.DocumentURI]struct{}, len(findings))
-
-	for path, fs := range findings {
-		uri := pathToURI(path)
-		current[uri] = struct{}{}
-
-		_ = h.client.PublishDiagnostics(ctx, &lsp.PublishDiagnosticsParams{
-			URI:         uri,
-			Diagnostics: toDiagnostics(idx, path, fs, fullRange),
-		})
+	for path := range findings {
+		current[pathToURI(path)] = struct{}{}
 	}
 
+	// Record the findings before announcing them. A client that reacts to the
+	// diagnostics by asking for hover or code actions must not race a scan that
+	// has published but not yet stored its results.
 	h.mu.Lock()
 	stale := h.published
 	h.findings = findings
 	h.published = current
 	h.mu.Unlock()
+
+	for path, fs := range findings {
+		_ = h.client.PublishDiagnostics(ctx, &lsp.PublishDiagnosticsParams{
+			URI:         pathToURI(path),
+			Diagnostics: toDiagnostics(idx, path, fs, fullRange),
+		})
+	}
 
 	for uri := range stale {
 		if _, still := current[uri]; still {
@@ -309,27 +333,50 @@ func (h *Handler) findingsFor(uri lsp.DocumentURI) []trivy.Finding {
 	return h.findings[path]
 }
 
-// reportScanError tells the user once when Trivy is missing, and logs
-// everything else without nagging.
-func (h *Handler) reportScanError(ctx context.Context, err error) {
-	var notInstalled *trivy.ErrNotInstalled
-	if errors.As(err, &notInstalled) {
-		h.warnOnce.Do(func() {
-			_ = h.client.ShowMessage(ctx, &lsp.ShowMessageParams{
-				Type: lsp.MessageTypeError,
-				Message: fmt.Sprintf(
-					"%s: %s. Install Trivy or set trivyPath in the server settings.",
-					serverName, notInstalled.Error(),
-				),
-			})
-		})
-		return
-	}
-
+// reportScanError always logs, and raises a dialog unless it would repeat one
+// the user has already seen. A scan the user asked for always raises a dialog:
+// an explicit action that reports nothing reads as "no findings", which on a
+// security tool is the most damaging thing this server could say.
+func (h *Handler) reportScanError(ctx context.Context, err error, interactive bool) {
 	_ = h.client.LogMessage(ctx, &lsp.LogMessageParams{
 		Type:    lsp.MessageTypeError,
 		Message: serverName + ": " + err.Error(),
 	})
+
+	message := scanErrorMessage(err)
+
+	if !interactive && !h.firstWarning(message) {
+		return
+	}
+
+	_ = h.client.ShowMessage(ctx, &lsp.ShowMessageParams{
+		Type:    lsp.MessageTypeError,
+		Message: message,
+	})
+}
+
+// firstWarning reports whether this message differs from the last one shown,
+// so a failure that recurs on every save is only raised once.
+func (h *Handler) firstWarning(message string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.warned == message {
+		return false
+	}
+	h.warned = message
+	return true
+}
+
+func scanErrorMessage(err error) string {
+	var notInstalled *trivy.ErrNotInstalled
+	if errors.As(err, &notInstalled) {
+		return fmt.Sprintf(
+			"%s: %s. Install Trivy or set trivyPath in the server settings.",
+			serverName, notInstalled.Error(),
+		)
+	}
+	return fmt.Sprintf("%s: %s", serverName, err.Error())
 }
 
 func (h *Handler) beginProgress(ctx context.Context) {
