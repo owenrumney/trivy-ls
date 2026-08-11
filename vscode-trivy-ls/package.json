@@ -2,7 +2,7 @@
   "name": "trivy-ls",
   "displayName": "Trivy Language Server",
   "description": "Trivy misconfiguration, secret and vulnerability findings as inline diagnostics, with hover details and ignore quick fixes.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "owenrumney",
   "license": "MIT",
   "icon": "images/icon.png",
