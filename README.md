@@ -1,5 +1,8 @@
 # trivy-ls
 
+> [!NOTE]
+> While I previously worked on Trivy and the official VS Code extension, this is not endorsed by or linked to Aqua Security or the Trivy OSS Team. The Language Server will drive whatever version of Trivy you have installed
+
 A [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) server for [Trivy](https://github.com/aquasecurity/trivy). It scans your workspace and reports misconfigurations, secrets and vulnerabilities as editor diagnostics, in any editor with an LSP client.
 
 Built on [go-lsp](https://github.com/owenrumney/go-lsp).
