@@ -7,7 +7,11 @@ A [Language Server Protocol](https://microsoft.github.io/language-server-protoco
 
 Built on [go-lsp](https://github.com/owenrumney/go-lsp).
 
-![Trivy LS - Neovim](.github/images/trivy-ls.png)
+Vim            |  VS Code
+:-------------------------:|:-------------------------:
+![Trivy LS - Neovim](.github/images/trivy-ls.png) |  ![Trivy LS - VS Code](.github/images/vscode.png)
+
+
 
 
 ## Contents
