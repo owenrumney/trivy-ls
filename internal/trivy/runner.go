@@ -60,7 +60,7 @@ func (r *Runner) Scan(ctx context.Context, dir string) (Findings, error) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, r.binary(), r.args()...)
+	cmd := exec.CommandContext(ctx, r.binary(), r.args()...) //nolint:gosec // binary and args come from user config, which is trusted
 	cmd.Dir = dir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

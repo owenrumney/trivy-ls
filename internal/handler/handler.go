@@ -122,6 +122,8 @@ func (h *Handler) Shutdown(_ context.Context) error { return nil }
 
 // rootFrom picks the workspace root, preferring workspace folders over the
 // deprecated rootUri and rootPath fields.
+//
+//nolint:staticcheck // rootUri and rootPath are deprecated but still all some clients send
 func rootFrom(params *lsp.InitializeParams) string {
 	if len(params.WorkspaceFolders) > 0 {
 		if path, ok := uriToPath(params.WorkspaceFolders[0].URI); ok {
