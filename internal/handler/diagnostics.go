@@ -47,7 +47,7 @@ func (l *lineIndex) lines(path string) []string {
 	}
 
 	var lines []string
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { //nolint:gosec // path comes from the trivy report for a scanned file
 		lines = strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	}
 	l.cache[path] = lines

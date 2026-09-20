@@ -150,9 +150,12 @@ func (h *Handler) addToIgnoreFile(id string) error {
 		return fmt.Errorf("no workspace root")
 	}
 
-	path := filepath.Join(root, h.ignoreFileName())
+	path, err := ignoreFilePath(root, h.ignoreFileName())
+	if err != nil {
+		return err
+	}
 
-	existing, err := os.ReadFile(path)
+	existing, err := os.ReadFile(path) //nolint:gosec // path is the workspace-rooted ignore file
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -169,10 +172,23 @@ func (h *Handler) addToIgnoreFile(id string) error {
 	}
 	body += id + "\n"
 
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil { //nolint:gosec // ignoreFilePath has already confined path to the workspace root
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
+}
+
+// ignoreFilePath resolves the configured ignore file against the workspace root,
+// rejecting a configured name that escapes it.
+func ignoreFilePath(root, name string) (string, error) {
+	if filepath.IsAbs(name) {
+		return "", fmt.Errorf("ignore file %q must be relative to the workspace root", name)
+	}
+	path := filepath.Join(root, name)
+	if !strings.HasPrefix(path, filepath.Clean(root)+string(os.PathSeparator)) {
+		return "", fmt.Errorf("ignore file %q is outside the workspace root", name)
+	}
+	return path, nil
 }
 
 // ignoreFileName is the configured ignore file, relative to the workspace root.
@@ -192,7 +208,7 @@ func (h *Handler) lineText(uri lsp.DocumentURI, path string, line int) string {
 	if text, ok := h.docs.Text(uri); ok {
 		return nthLine(text, line)
 	}
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := os.ReadFile(path); err == nil { //nolint:gosec // path comes from the client as the document being edited
 		return nthLine(string(data), line)
 	}
 	return ""

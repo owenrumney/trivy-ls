@@ -148,3 +148,36 @@ func TestAddToIgnoreFileWithoutRoot(t *testing.T) {
 		t.Error("expected an error when no workspace root is known")
 	}
 }
+
+func TestIgnoreFilePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		file    string
+		want    string
+		wantErr bool
+	}{
+		{name: "default", file: ".trivyignore", want: "/ws/.trivyignore"},
+		{name: "subdirectory", file: ".trivy/ignore.yaml", want: "/ws/.trivy/ignore.yaml"},
+		{name: "parent escape", file: "../outside", wantErr: true},
+		{name: "absolute escape", file: "/etc/passwd", wantErr: true},
+		{name: "root itself", file: ".", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ignoreFilePath("/ws", tt.file)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("ignoreFilePath = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
